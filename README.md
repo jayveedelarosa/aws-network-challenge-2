@@ -117,11 +117,11 @@ This project is structured as a series of labs, each building on the previous on
 
 ## 👤 Author
 
-**Jayvee Dela Rosa**
-1st Year BSCS Student
-LinkedIn: [Jayvee Dela Rosa](https://www.linkedin.com/in/jayveedelarosa/)
-GitHub: [@jayveedelarosa](https://github.com/jayveedelarosa)
-Facebook: [Jayvee C. Dela Rosa](https://www.facebook.com/JvCDr/)
-Portfolio website:  [Jayvee Dela Rosa](jayveedelarosa.dev)
+**Jayvee Dela Rosa** — 1st Year BSCS Student
+
+- 💼 LinkedIn: [Jayvee Dela Rosa](https://www.linkedin.com/in/jayveedelarosa/)
+- 🐙 GitHub: [@jayveedelarosa](https://github.com/jayveedelarosa)
+- 📘 Facebook: [Jayvee C. Dela Rosa](https://www.facebook.com/JvCDr/)
+- 🌐 Portfolio: [jayveedelarosa.dev](https://jayveedelarosa.dev)
 
 
