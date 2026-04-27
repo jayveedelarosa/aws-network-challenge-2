@@ -40,7 +40,7 @@ single-server setup to a fully managed, auto-scaling, CI/CD-enabled cloud
 deployment.
 
 > 📖 Original Challenge Article by Sir Raphael:
-> [AWS Network Challenge 2 — dev.to](https://dev.to/raphael_jambalos/aws-network-challenge-2-deploy-a-file-uploading-app-on-ec2-rds-documentdb-16eb)
+> [AWS Network Challenge 2](https://dev.to/raphael_jambalos/aws-network-challenge-2-deploy-a-file-uploading-app-on-ec2-rds-documentdb-16eb)
 >
 > 💻 Original Application Repository:
 > [jamby1100/file-upload-flask](https://github.com/jamby1100/file-upload-flask/tree/main)
