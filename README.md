@@ -17,7 +17,7 @@ Arthaland Century Pacific Tower, Bonifacio Global City (BGC), Taguig City, Metro
 attended by industry professionals. Despite being a 1st year student, I chose
 to participate.
 
-During the event, I met **Raphael Jambalos** — AWS Community Hero, Head of Tech
+During the event, I met sir **Raphael Jambalos** — AWS Community Hero, Head of Tech
 at eCloudValley Philippines, and the speaker of the workshop. I expressed my
 desire to join his **Elevate Innovations Training Program**, but the program
 prioritizes graduating students and fresh graduates.
