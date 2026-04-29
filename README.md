@@ -13,16 +13,17 @@
 My name is **Jayvee Dela Rosa**, a 1st year BSCS student.
 
 On **April 21, 2026**, I attended **VibeAIPH #2: Kiro for Work Workshop** at
-Arthaland Century Pacific Tower, Bonifacio Global City (BGC), Taguig City, Metro Manila, an event typically
-attended by industry professionals. Despite being a 1st year student, I chose
-to participate.
+Arthaland Century Pacific Tower, Bonifacio Global City (BGC), Taguig City, 
+Metro Manila, an event typically attended by industry professionals. Despite 
+being a 1st year student, I chose to participate.
 
-During the event, I met sir **Raphael Jambalos** — AWS Community Hero, Head of Tech
-at eCloudValley Philippines, and the speaker of the workshop. I expressed my
-desire to join his **Elevate Innovations Training Program**, but the program
-prioritizes graduating students and fresh graduates.
+During the event, I met sir **Raphael Jambalos** — AWS Community Hero, Head 
+of Tech at eCloudValley Philippines, and the speaker of the workshop. I 
+expressed my desire to join his **Elevate Innovations Training Program**, but 
+the program prioritizes graduating students and fresh graduates.
 
 Because I insisted on wanting to join, **Sir Raphael challenged me** to:
+
 - ✅ Build a full AWS project
 - ✅ Document it professionally on GitHub
 - ✅ Be able to explain it clearly — by **May 9, 2026**
@@ -53,12 +54,13 @@ The app (`main.py`) is a Flask web application with 4 routes:
 
 | Route | What it does |
 |-------|-------------|
-| `/` | Returns "Hello World" — health check |
+| `/` | Returns "Hello, World Elisha!" — health check |
 | `/upload-file` | Upload a product image + set stock count |
 | `/images` | View all uploaded product images |
 | `/uploads/<name>` | Serve the actual image file |
 
 When a user uploads an image:
+
 1. The image file is saved to disk (later to EFS)
 2. The filename is saved to **MongoDB/DocumentDB**
 3. The product details are saved to **PostgreSQL/RDS**
@@ -76,17 +78,19 @@ When a user uploads an image:
 | Web Server | Nginx (Reverse Proxy) |
 | Cloud Provider | Amazon Web Services (AWS) |
 | Region | ap-southeast-1 (Singapore) |
-| OS | Amazon Linux 2023 |
+| OS | Amazon Linux 2 (Lab 1), Amazon Linux 2023 (Lab 2+) |
 
 ---
 
 ## 🏗️ Architecture Evolution (Labs 1–6)
 
-This project is structured as a series of labs, each building on the previous one. The architecture evolves from a single fragile server to a fully managed, auto-scaling cloud infrastructure.
+This project is structured as a series of labs, each building on the 
+previous one. The architecture evolves from a single fragile server to a 
+fully managed, auto-scaling cloud infrastructure.
 
 | Lab | Status | Description |
 |---|---|---|
-| Lab 1 | 🚧 In Progress | Single server deployment via Amazon LightSail |
+| Lab 1 | ✅ Complete | Progressive LightSail deployment: single server, three separate servers, five servers with replication |
 | Lab 2 | ✅ Complete | Multi-server deployment inside AWS VPC with public and private subnets |
 | Lab 3 | ⏳ Coming Soon | Replace manual databases with Amazon RDS and Amazon DocumentDB |
 | Lab 4 | ⏳ Coming Soon | Remove state from app servers using Amazon EFS for shared file storage |
@@ -97,21 +101,27 @@ This project is structured as a series of labs, each building on the previous on
 
 ## ⚙️ AWS Services Used (So Far)
 
-- **Amazon LightSail** — Lab 1 simple deployment
+- **Amazon LightSail** — Lab 1 simple deployment across single and 
+  multi-server configurations
 - **Amazon VPC** — Virtual Private Cloud with public and private subnets
 - **Amazon EC2** — Virtual servers for the app, proxy, MongoDB, and PostgreSQL
 - **Nginx** — Reverse proxy on the public-facing server
 - **AWS Security Groups** — Per-server firewall rules
-- **NAT Gateway** — Temporary internet access for private subnet servers during setup
+- **NAT Gateway** — Temporary internet access for private subnet servers 
+  during setup
+- **AWS Service Quotas** — Instance limit management for multi-server 
+  LightSail deployments
 
 ---
 
 ## 🙏 References and Credits
 
-- **Raphael Jambalos** — Original challenge creator, AWS Community Hero, Head of Tech at eCloudValley Philippines
+- **Raphael Jambalos** — Original challenge creator, AWS Community Hero, 
+  Head of Tech at eCloudValley Philippines
   - 📖 [Dev.to Article](https://dev.to/raphael_jambalos/aws-network-challenge-2-deploy-a-file-uploading-app-on-ec2-rds-documentdb-16eb)
   - 💻 [Original GitHub Repository](https://github.com/jamby1100/file-upload-flask/tree/main)
-- **VibeAIPH Community** — For hosting the event where this challenge was given
+- **VibeAIPH Community** — For hosting the event where this challenge 
+  was given
 
 ---
 
@@ -123,5 +133,4 @@ This project is structured as a series of labs, each building on the previous on
 - 🐙 GitHub: [@jayveedelarosa](https://github.com/jayveedelarosa)
 - 📘 Facebook: [Jayvee C. Dela Rosa](https://www.facebook.com/JvCDr/)
 - 🌐 Portfolio: [jayveedelarosa.dev](https://jayveedelarosa.dev)
-
 
