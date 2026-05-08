@@ -8,6 +8,19 @@
 
 ---
 
+## ⚡ TL;DR
+
+- Built a full VPC network from scratch: 1 VPC (`10.0.0.0/16`), public + private subnets, Internet Gateway, 2 route tables, and 4 security groups, each scoped to a specific server role
+- Deployed 4 EC2 instances with network isolation: only the Proxy Server has a public IP, app and database servers live entirely in the private subnet
+- Configured Nginx on the Proxy Server to forward port 80 traffic to the Flask app on port 5000 inside the private subnet
+- Used security group referencing instead of IP-based rules, so MongoDB only accepts port 27017 from `flask-app-server-sg`, not from any arbitrary IP
+- Diagnosed that private subnet servers have no outbound internet by default, created a temporary NAT Gateway for package installation, then deleted it after setup to avoid ongoing charges
+- Switched from MongoDB 6.0 to MongoDB 7.0 after `libssl.so.10` dependency errors confirmed that 6.0 is incompatible with Amazon Linux 2023, then manually rebuilt an empty `mongod.conf` using `tee`
+- Adapted all package commands from `yum` to `dnf` after discovering Amazon Linux 2 is no longer available as a Quick Start AMI in 2026
+- Implemented the SSH bastion host pattern to reach private servers: local machine to Proxy Server, then Proxy Server to each private instance via internal IP
+
+---
+
 ## 🔹 Overview
 
 Lab 2 is where the architecture becomes real. In Lab 1, everything ran on a single server, it is simple, but fragile and exposed. Lab 2 fixes that by introducing a proper AWS network using **Amazon VPC**, separating the application from its databases, and hiding everything sensitive inside a **private subnet**.
