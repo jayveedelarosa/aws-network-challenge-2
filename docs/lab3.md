@@ -8,6 +8,19 @@
 
 ---
 
+## ⚡ TL;DR
+
+- Replaced manually managed EC2 database servers with Amazon RDS (PostgreSQL) and Amazon DocumentDB, reducing active EC2 instances from 4 down to 1
+- Replaced the Nginx Proxy Server EC2 with an Application Load Balancer, configured with a target group health check on Flask's root route returning 200 OK
+- Diagnosed that DocumentDB was rejecting every connection with `Connection reset by peer` because the cluster was never rebooted after the TLS parameter group change, so TLS stayed enabled despite the parameter group showing it as disabled
+- Fixed the DocumentDB connection by rebooting the cluster, downgrading pymongo from 4.10.1 to 4.6.3 for DocumentDB 8.0 compatibility, and adding explicit `tls=False` + `serverSelectionTimeoutMS=30000` to the MongoClient constructor
+- Created a custom DocumentDB Cluster Parameter Group with `tls=disabled` before cluster creation, since the AWS Console no longer exposes a TLS toggle during the cluster creation wizard
+- Worked around two RDS constraint violations: `flask_photo_app_admin` exceeded the 16-character username limit, and the original password's `@` character is reserved in connection strings
+- Required a second private subnet in a different AZ solely to satisfy the DB Subnet Group's multi-AZ requirement, with no actual resources deployed into it
+- Created and immediately deleted a temporary NAT Gateway twice: once during initial setup for package installation, and again to allow the pymongo downgrade on the private App Server
+
+---
+
 ## 🔹 Overview
 
 Lab 3 is where the architecture stops feeling like a science project and starts feeling like a real cloud deployment. In Lab 2, I was manually managing four EC2 instances, including a MongoDB server and a PostgreSQL server that I had to configure, secure, and keep running myself. Lab 3 replaces those two database servers with AWS managed services, and replaces the Nginx Proxy Server with an Application Load Balancer. By the end of this lab, I went from managing four EC2 instances down to one.
