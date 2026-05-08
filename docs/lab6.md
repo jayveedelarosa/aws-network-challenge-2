@@ -8,6 +8,19 @@
 
 ---
 
+## ⚡ TL;DR
+
+- Attempted a full CI/CD pipeline using AWS CodePipeline and CodeDeploy targeting the Lab 5 ASG, with `appspec.yml`, `stop_flask.sh`, and `start_server.sh` committed to a forked GitHub repository
+- Diagnosed that the CodeDeploy agent could not reach `codedeploy-commands.ap-southeast-1.amazonaws.com:443` because the private subnet had no outbound internet route after the Lab 5 NAT Gateway was deleted, confirmed via `ip route show` on the instance
+- Attempted VPC Interface Endpoints as the cheaper fix, but the agent continued routing to the public IP due to unresolved security group or subnet association issues, so fell back to recreating the NAT Gateway
+- Hit an AMI inheritance problem: every new ASG instance launched from the original AMI with no CodeDeploy agent installed, requiring repeated cycles of install agent, create AMI, update Launch Template, update ASG, terminate instance
+- Fixed a file conflict where CodeDeploy's `Install` event failed on `.gitignore` because the `file-upload-flask` folder was baked into the AMI from Lab 5, and `overwrite: true` does not clear pre-existing files not in the deployment bundle, resolved by adding `rm -rf /home/ec2-user/file-upload-flask` to `stop_flask.sh`
+- Pipeline ran and all CodeDeploy lifecycle events turned green at least once, but the code change never reflected in the browser because the running instance predated the `rm -rf` fix
+- Stopped after three days due to Finals week, compounding AMI cycle times, and a forecasted AWS bill that had climbed to $93 from repeated NAT Gateway charges
+- Fully cleaned up all Lab 6 resources and restored the infrastructure to its Lab 5 state, with the original AMI, Launch Template Version 1, and a healthy ASG instance serving traffic
+
+---
+
 ## 🔹 Overview
 
 Every lab up to this point built toward one goal: remove manual work from the infrastructure. Lab 3 removed the need to manage databases manually. Lab 4 removed local file storage. Lab 5 removed the need to manually scale servers. Lab 6 was supposed to remove the last remaining manual step: deploying code.
