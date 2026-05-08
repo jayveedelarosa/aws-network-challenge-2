@@ -7,6 +7,17 @@
 **Reference:** [AWS Network Challenge 2 by Raphael Jambalos](https://dev.to/raphael_jambalos/aws-network-challenge-2-deploy-a-file-uploading-app-on-ec2-rds-documentdb-16eb)
 
 ---
+## ⚡ TL;DR
+
+- Deployed a Flask photo eCommerce app on Amazon LightSail across three progressive architectures: single server, three-server separated, and five-server with live replication
+- Configured MongoDB 6.0 Replica Set (`rs0`) across two LightSail instances, verified via `rs.status()` showing PRIMARY/SECONDARY state
+- Set up PostgreSQL 14 streaming replication using WAL (`wal_level = replica`), seeded the secondary with `pg_basebackup -R`, and confirmed active replication via `standby.signal`
+- Migrated databases from `localhost` to dedicated servers using private IPs only, with no application code changes, only environment variable updates
+- Fixed Python version mismatch by installing Python 3.8 via `amazon-linux-extras` after `blinker==1.8.2` rejected the default Python 3.7 on Amazon Linux 2
+- Caught and fixed two config typos (`replSetNae`, `wal_keep_siz`) that caused full database service failures, resolved using `sed` for precise line-level edits
+- Hit a LightSail instance quota mid-setup and resolved it through the AWS Service Quotas console before continuing
+
+---
 
 ## 🔹 Overview
 
