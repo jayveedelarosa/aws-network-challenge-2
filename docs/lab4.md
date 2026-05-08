@@ -7,6 +7,19 @@
 **Reference:** [AWS Network Challenge 2 by Raphael Jambalos](https://dev.to/raphael_jambalos/aws-network-challenge-2-deploy-a-file-uploading-app-on-ec2-rds-documentdb-16eb)
  
 ---
+
+## ⚡ TL;DR
+
+- Replaced local disk file storage with Amazon EFS, making the App Server fully stateless so it can be cloned freely in Lab 5's auto-scaling setup
+- Created an EFS mount target only in `ap-southeast-1a` (where the App Server lives), skipping `ap-southeast-1b` to avoid paying for an unused mount target
+- Diagnosed EFS mount failure caused by DNS hostnames being disabled on the VPC: DNS resolution and DNS hostnames are separate VPC settings, and EFS requires both
+- Fixed EFS root ownership with `chown -R ec2-user:ec2-user` before Flask could write to the mount, since EFS root defaults to `root` on first mount
+- Added `_netdev` flag to the `/etc/fstab` entry to prevent a boot-time race condition where the system would attempt to mount EFS before the network interface was ready
+- Redirected all file uploads by changing a single environment variable from `/tmp` to `/home/ec2-user/efs/uploads`, with zero application code changes
+- Created and deleted a third temporary NAT Gateway to install `amazon-efs-utils` on the private App Server, then removed the route and released the Elastic IP immediately after
+- Verified the upload landed on EFS (not `/tmp`) by checking the directory in the terminal after a test upload, then confirmed the image loaded correctly through the ALB
+
+---
  
 ## 🔹 Overview
  
