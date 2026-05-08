@@ -8,6 +8,18 @@
 
 ---
 
+## ⚡ TL;DR
+
+- Built an Auto Scaling Group using a custom AMI, Launch Template, and User Data script that automatically starts Flask on every new instance without any manual intervention
+- Diagnosed that the ASG never scaled out despite CPU hitting 99% because the dynamic scaling policy was never created during setup, meaning no CloudWatch alarm existed to trigger anything
+- Created the missing `flask-app-cpu-scaling-policy` (target tracking, 70% average CPU), which auto-generated two CloudWatch alarms, then reran the stress test with a 600-second timeout to give CloudWatch enough evaluation windows to fire
+- Baked two shell scripts into the AMI before image capture: `flask-env.sh` stores all eight environment variables, `start-flask.sh` sources them and starts Flask, so every ASG instance is self-configuring from boot
+- Restricted the ASG to `flask-app-private-subnet` (`ap-southeast-1a`) only, because the EFS mount target from Lab 4 only exists in that AZ and instances in `ap-southeast-1b` would fail to mount EFS and loop through unhealthy terminations
+- Verified full scale-out and scale-in cycle: CPU stress triggered launch of two additional instances, all three registered healthy in the target group, uploads worked across the event, then instances drained and terminated cleanly after CPU normalized
+- Confirmed stateless architecture works under real load: three simultaneous ASG instances all read and wrote to the same EFS volume, RDS instance, and DocumentDB cluster with no data inconsistency
+
+---
+
 ## 🔹 Overview
 
 Lab 4 made the App Server stateless. Lab 5 is where that decision pays off. With all data living in RDS, DocumentDB, and EFS, the App Server itself holds nothing. That means it can be cloned. And if it can be cloned, it can be cloned automatically.
