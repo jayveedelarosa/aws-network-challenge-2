@@ -17,8 +17,8 @@ Arthaland Century Pacific Tower, Bonifacio Global City (BGC), Taguig City,
 Metro Manila, an event typically attended by industry professionals. Despite
 being a 1st year student, I chose to participate.
 
-During the event, I met sir **Raphael Jambalos** — AWS Community Hero, Head
-of Tech at eCloudValley Philippines, and the speaker of the workshop. I
+During the event, I met sir **Raphael Jambalos** (AWS Community Hero, Head
+of Tech at eCloudValley Philippines, and the speaker of the workshop). I
 expressed my desire to join his **Elevate Innovations Training Program**, but
 the program prioritizes graduating students and fresh graduates.
 
@@ -77,6 +77,7 @@ When a user uploads an image:
 | File Storage | Local → Amazon EFS |
 | Web Server | Nginx → AWS Application Load Balancer |
 | Scaling | Amazon Auto Scaling Groups |
+| CI/CD | AWS CodePipeline + AWS CodeDeploy (attempted) |
 | Cloud Provider | Amazon Web Services (AWS) |
 | Region | ap-southeast-1 (Singapore) |
 | OS | Amazon Linux 2 (Lab 1), Amazon Linux 2023 (Lab 2+) |
@@ -96,7 +97,7 @@ fully managed, auto-scaling cloud infrastructure.
 | Lab 3 | ✅ Complete | Replace manual databases with Amazon RDS and Amazon DocumentDB, replace Nginx with Application Load Balancer |
 | Lab 4 | ✅ Complete | Remove state from app servers using Amazon EFS for shared file storage |
 | Lab 5 | ✅ Complete | Auto Scaling Groups for automatic EC2 scaling based on CPU utilization |
-| Lab 6 | ⏳ Coming Soon | CI/CD pipeline with AWS CodePipeline and CodeDeploy |
+| Lab 6 | ⚠️ Attempted | CI/CD pipeline with AWS CodePipeline and CodeDeploy — pipeline ran successfully but full end-to-end verification was not completed before the May 9 deadline |
 
 ---
 
@@ -104,37 +105,63 @@ fully managed, auto-scaling cloud infrastructure.
 
 - **Amazon LightSail** — Lab 1 simple deployment across single and
   multi-server configurations
+
 - **Amazon VPC** — Virtual Private Cloud with public and private subnets
+
 - **Amazon EC2** — Virtual servers for the app, proxy, MongoDB, and PostgreSQL
+
 - **Nginx** — Reverse proxy on the public-facing server (Lab 2)
+
 - **AWS Security Groups** — Per-server firewall rules
+
 - **NAT Gateway** — Temporary internet access for private subnet servers
   during setup
+
 - **AWS Service Quotas** — Instance limit management for multi-server
   LightSail deployments
+
 - **Amazon RDS** — Fully managed PostgreSQL database replacing the manually
   configured PostgreSQL EC2 server
+
 - **Amazon DocumentDB** — Fully managed MongoDB-compatible database replacing
   the manually configured MongoDB EC2 server
+
 - **AWS Application Load Balancer** — Managed load balancer replacing the
   Nginx Proxy Server EC2, distributing traffic to the App Server
+
 - **DB Subnet Groups** — Required configuration for placing RDS and
   DocumentDB inside the VPC private subnets
+
 - **DocumentDB Parameter Groups** — Used to disable TLS on the DocumentDB
   cluster for pymongo compatibility
+
 - **Amazon EFS (Elastic File System)** — Fully managed shared network file
   system mounted on the App Server, replacing local disk storage for uploaded
   images and making the App Server completely stateless
+
 - **Amazon Machine Image (AMI)** — Snapshot of the configured App Server
   used as the blueprint for all ASG-launched instances
+
 - **AWS Launch Template** — Configuration document defining how the ASG
   launches new instances, including the AMI, instance type, security group,
   and User Data startup script
+
 - **Amazon Auto Scaling Group (ASG)** — Automatically launches and terminates
   App Server instances based on CPU utilization, integrated with the ALB
   target group for seamless traffic distribution
+
 - **Amazon CloudWatch Alarms** — Monitor average CPU utilization across ASG
   instances and trigger scale-out and scale-in events at the 70% threshold
+
+- **AWS CodeDeploy** — Deployment service that coordinates code deployment
+  to EC2 instances via the CodeDeploy agent (attempted in Lab 6)
+
+- **AWS CodePipeline** — CI/CD orchestration service that watches GitHub for
+  pushes and triggers CodeDeploy deployments automatically (attempted in Lab 6)
+
+- **AWS IAM Roles** — `CodeDeployServiceRole` and `EC2CodeDeployInstanceProfile`
+  created to give CodeDeploy and EC2 the permissions needed to communicate
+  (created and deleted in Lab 6)
 
 ---
 
@@ -144,6 +171,7 @@ fully managed, auto-scaling cloud infrastructure.
   Head of Tech at eCloudValley Philippines
   - 📖 [Dev.to Article](https://dev.to/raphael_jambalos/aws-network-challenge-2-deploy-a-file-uploading-app-on-ec2-rds-documentdb-16eb)
   - 💻 [Original GitHub Repository](https://github.com/jamby1100/file-upload-flask/tree/main)
+
 - **VibeAIPH Community** — For hosting the event where this challenge
   was given
 
