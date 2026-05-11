@@ -1,8 +1,8 @@
 # Lab 6: CI/CD Pipeline with AWS CodePipeline and CodeDeploy
 
-**Status:** ⚠️ Attempted
+**Status:** ✅ Complete
 
-**Date:** May 5-8, 2026
+**Date Completed:** May 11, 2026
 
 **Reference:** [AWS Network Challenge 2 by Raphael Jambalos](https://dev.to/raphael_jambalos/aws-network-challenge-2-deploy-a-file-uploading-app-on-ec2-rds-documentdb-16eb)
 
@@ -10,26 +10,22 @@
 
 ## ⚡ TL;DR
 
-- Attempted a full CI/CD pipeline using AWS CodePipeline and CodeDeploy targeting the Lab 5 ASG, with `appspec.yml`, `stop_flask.sh`, and `start_server.sh` committed to a forked GitHub repository
-- Diagnosed that the CodeDeploy agent could not reach `codedeploy-commands.ap-southeast-1.amazonaws.com:443` because the private subnet had no outbound internet route after the Lab 5 NAT Gateway was deleted, confirmed via `ip route show` on the instance
-- Attempted VPC Interface Endpoints as the cheaper fix, but the agent continued routing to the public IP due to unresolved security group or subnet association issues, so fell back to recreating the NAT Gateway
-- Hit an AMI inheritance problem: every new ASG instance launched from the original AMI with no CodeDeploy agent installed, requiring repeated cycles of install agent, create AMI, update Launch Template, update ASG, terminate instance
-- Fixed a file conflict where CodeDeploy's `Install` event failed on `.gitignore` because the `file-upload-flask` folder was baked into the AMI from Lab 5, and `overwrite: true` does not clear pre-existing files not in the deployment bundle, resolved by adding `rm -rf /home/ec2-user/file-upload-flask` to `stop_flask.sh`
-- Pipeline ran and all CodeDeploy lifecycle events turned green at least once, but the code change never reflected in the browser because the running instance predated the `rm -rf` fix
-- Stopped after three days due to Finals week, compounding AMI cycle times, and a forecasted AWS bill that had climbed to $93 from repeated NAT Gateway charges
-- Fully cleaned up all Lab 6 resources and restored the infrastructure to its Lab 5 state, with the original AMI, Launch Template Version 1, and a healthy ASG instance serving traffic
+- Built a full CI/CD pipeline using AWS CodePipeline and CodeDeploy targeting the Lab 5 ASG, with `appspec.yml`, `stop_flask.sh`, and `start_server.sh` committed to a forked GitHub repository
+- Hit the NAT Gateway problem first: the CodeDeploy agent could not reach `codedeploy-commands.ap-southeast-1.amazonaws.com:443` because the private subnet had no outbound internet route after Lab 5 cleanup, confirmed via `ip route show` on the instance, fixed by recreating the NAT Gateway
+- Discovered that moving a Python venv breaks its internal shebang paths, causing `nohup: failed to run command '/home/ec2-user/venv/bin/flask': No such file or directory` on every deployment, fixed by launching from the original Lab 5 AMI, recreating the venv correctly at `/home/ec2-user/venv`, and baking it into AMI v4
+- Fixed a secondary Flask startup failure where `nohup flask` could not resolve the command without the full absolute path, fixed by changing the `start_server.sh` script to use `/home/ec2-user/venv/bin/flask` directly
+- Pipeline ran end-to-end successfully: pushed a code change from the laptop, the pipeline triggered automatically from the GitHub push, CodeDeploy deployed to the ASG instance, and the browser confirmed the new message live via the ALB
+- Had a previous failed attempt in May 5-8 that was stopped due to Finals week pressure and AWS costs reaching $93, fully cleaned up, and restarted cleanly on May 11
 
 ---
 
 ## 🔹 Overview
 
-Every lab up to this point built toward one goal: remove manual work from the infrastructure. Lab 3 removed the need to manage databases manually. Lab 4 removed local file storage. Lab 5 removed the need to manually scale servers. Lab 6 was supposed to remove the last remaining manual step: deploying code.
+Every lab up to this point built toward one goal: remove manual work from the infrastructure. Lab 3 removed the need to manage databases manually. Lab 4 removed local file storage. Lab 5 removed the need to manually scale servers. Lab 6 removes the last remaining manual step: deploying code.
 
-Before Lab 6, updating the Flask app meant SSHing into every running server, pulling the latest code, and restarting Flask. If the ASG had three instances running, that process had to be repeated three times. Any new instance launched after a manual update would still have the old code because it came from an old AMI. Lab 6 was designed to replace all of that with two AWS services working together. AWS CodePipeline would watch the GitHub repository and trigger automatically on every push. AWS CodeDeploy would take that code and deploy it to every instance in the ASG without any manual intervention.
+Before Lab 6, updating the Flask app meant SSHing into every running server, pulling the latest code, and restarting Flask. If the ASG had three instances running, that process had to be repeated three times. Any new instance launched after a manual update would still have the old code because it came from an old AMI. Lab 6 replaces all of that with two AWS services working together. AWS CodePipeline watches the GitHub repository and triggers automatically on every push. AWS CodeDeploy takes that code and deploys it to every instance in the ASG without any manual intervention.
 
-The lab did not fully complete. The pipeline ran successfully at least once, and the deployment lifecycle events all turned green. But a combination of infrastructure constraints, repeated AMI cycles, and the realities of a tight deadline made it impossible to reach the final verification step. With Finals week approaching, AWS costs accumulating daily, and May 9 as a hard deadline, I made the decision to stop, clean up all Lab 6 resources, and restore the infrastructure back to its Lab 5 state.
-
-This document covers what was built, what broke and what I learned
+This lab took two attempts. The first attempt ran from May 5 to May 8 and was stopped before completion due to Finals week and mounting AWS costs. Everything was cleaned up and the infrastructure was restored to its Lab 5 state. The second attempt on May 11 started from a clean baseline, worked through every problem methodically, and reached full end-to-end verification: a code change pushed from the laptop appeared live in the browser without touching a single server.
 
 ![Lab 6 Architecture](images/lab6/lab6-architecture-diagram.png)
 
@@ -42,8 +38,8 @@ This document covers what was built, what broke and what I learned
 Build a fully automated CI/CD pipeline that deploys code changes to the ASG without any manual intervention:
 
 - Set up a GitHub repository with CodeDeploy configuration files
-- Install the CodeDeploy agent on the ASG instance and bake it into a new AMI
 - Create IAM roles for CodeDeploy and EC2 to communicate with each other
+- Install the CodeDeploy agent on the ASG instance and bake it into a new AMI
 - Create a CodeDeploy Application and Deployment Group targeting the ASG
 - Create a CodePipeline connected to GitHub that triggers on every push
 - Verify the pipeline by pushing a visible code change and watching it deploy automatically
@@ -59,20 +55,18 @@ Build a fully automated CI/CD pipeline that deploys code changes to the ASG with
 - 1 `appspec.yml` file defining the CodeDeploy deployment instructions
 - 1 IAM Role (`CodeDeployServiceRole`) for CodeDeploy to interact with EC2 and S3
 - 1 IAM Role (`EC2CodeDeployInstanceProfile`) for EC2 instances to pull deployment bundles from S3
-- Multiple AMI versions capturing the CodeDeploy agent installation at different stages
+- 4 AMI versions across both attempts, each capturing a progressively cleaner server state
 - Multiple Launch Template versions updated to use each new AMI
 - 1 CodeDeploy Application (`flask-photo-app`)
 - 1 CodeDeploy Deployment Group (`flask-app-deployment-group`) targeting `flask-app-asg`
-- 1 CodePipeline (`flask-app-pipeline`) connected to GitHub via GitHub App connection
-- 1 NAT Gateway (created and deleted multiple times to provide temporary internet access)
-
-**Note on cleanup:** All Lab 6 resources listed above were fully deleted at the end of this lab. The infrastructure was restored to its Lab 5 state with the original AMI, Launch Template Version 1, and the ASG running cleanly.
+- 1 CodePipeline (`flask-cicd-pipeline`) connected to GitHub via GitHub App connection
+- 1 NAT Gateway providing outbound internet access for the CodeDeploy agent in the private subnet
 
 ---
 
 ## 🔹 Code Integration
 
-Three files were added to the repository for CodeDeploy to work. These files tell CodeDeploy what to do before, during, and after it copies new code onto the server.
+Three files were added to the repository to tell CodeDeploy what to do before, during, and after it copies new code onto the server.
 
 `appspec.yml` is the instruction manual. It maps the source files to their destination on the server, sets the correct file ownership, and defines which scripts to run at each lifecycle event:
 
@@ -101,7 +95,7 @@ hooks:
       runas: ec2-user
 ```
 
-`scripts/stop_flask.sh` stops Flask gracefully before CodeDeploy copies new files:
+`scripts/stop_flask.sh` stops Flask and clears the application directory before CodeDeploy copies new files:
 
 ```bash
 #!/bin/bash
@@ -111,7 +105,7 @@ rm -rf /home/ec2-user/file-upload-flask
 echo "Flask stopped"
 ```
 
-The `|| true` on each `pkill` line prevents CodeDeploy from treating a missing process as a failure. The `rm -rf` line was added later in the troubleshooting process to resolve a file conflict issue described in the My Experience section.
+The `|| true` on each `pkill` line prevents CodeDeploy from treating a missing process as a failure. The `rm -rf` line guarantees a clean slate before every deployment, which was a critical fix discovered during troubleshooting.
 
 `scripts/start_server.sh` activates the environment and starts Flask after the new code is in place:
 
@@ -119,12 +113,14 @@ The `|| true` on each `pkill` line prevents CodeDeploy from treating a missing p
 #!/bin/bash
 source /home/ec2-user/flask-env.sh
 cd /home/ec2-user/file-upload-flask
-source venv/bin/activate
+source /home/ec2-user/venv/bin/activate
 pip install -r requirements.txt
 mkdir -p /home/ec2-user/efs/uploads
-nohup flask --app main run --host 0.0.0.0 >> /home/ec2-user/flask.log 2>&1 &
+nohup /home/ec2-user/venv/bin/flask --app main run --host 0.0.0.0 >> /home/ec2-user/flask.log 2>&1 &
 echo "Flask started with PID $!"
 ```
+
+Two things in this script are worth noting. The venv path uses the full absolute path `/home/ec2-user/venv` rather than a relative path, because the venv lives outside the `file-upload-flask` directory that CodeDeploy manages. The `flask` command also uses a full absolute path `/home/ec2-user/venv/bin/flask` rather than just `flask`, because `nohup` does not inherit the activated venv PATH and cannot resolve the command otherwise. Both of these were lessons learned the hard way during troubleshooting.
 
 `nohup` is what keeps Flask alive after the script exits. CodeDeploy runs scripts in a temporary shell that closes when the script finishes. Without `nohup`, Flask would be killed the moment the start script exits.
 
@@ -132,173 +128,221 @@ echo "Flask started with PID $!"
 
 ## 🔹 My Experience
 
-### Setting Up the Repository and CodeDeploy Files
+### Starting From a Clean Baseline
 
-The first section of Lab 6 was the most straightforward. I forked Sir Raphael's repository, cloned it locally, and added the three CodeDeploy configuration files: `appspec.yml`, `scripts/stop_flask.sh`, and `scripts/start_server.sh`. Committing and pushing them to GitHub confirmed the structure was correct.
+Before building anything, I confirmed the infrastructure was back in its Lab 5 state. The ASG was running one healthy instance, the target group showed it as healthy, and the ALB was serving traffic correctly. Starting from a verified clean state was the right call after the first attempt left behind several AMI versions and a cluttered Launch Template history.
 
-![GitHub showing appspec.yml and scripts folder](images/lab6/lab6-01-github-codedeploy-files.png)
+![Lab 5 state verified before starting Lab 6](images/lab6/lab6-00-lab5-state-verified.png)
 
-*GitHub repository showing `appspec.yml` and the `scripts/` folder after the initial push*
-
-Installing Git on Windows was required first since it was not installed on my machine. Once installed, the clone, commit, and push all worked without issues.
+*ASG running one healthy instance and ALB serving traffic correctly before any Lab 6 resources were created*
 
 ---
 
-### Installing the CodeDeploy Agent
+### Setting Up the Repository and CodeDeploy Files
 
-The CodeDeploy agent is a small process that runs on each EC2 instance and listens for deployment instructions. Without it, CodeDeploy has no way to reach the instance. I SSHed into the current ASG instance through the proxy server and ran the installation commands.
+The first task was getting the GitHub repository ready. I forked Sir Raphael's original repository, cloned it locally on Windows, and added the three CodeDeploy configuration files: `appspec.yml`, `scripts/stop_flask.sh`, and `scripts/start_server.sh`. One small issue here was that `appspec.yml` was saved empty on the first push because I forgot to save the file in VS Code before committing. Catching that early on the GitHub file view saved a lot of confusion later.
 
-![CodeDeploy agent active and running](images/lab6/lab6-02-codedeployagent-running.png)
+![GitHub repository showing appspec.yml and scripts folder](images/lab6/lab6-01-github-files.png)
 
-*Terminal showing the CodeDeploy agent with `active (running)` status after installation*
-
-After confirming the agent was running, I created a new AMI from the instance to bake the agent in permanently.
-
-![AMI available](images/lab6/lab6-03-ami-v2-available.png)
-
-*New AMI showing Available status after the CodeDeploy agent was installed*
-
-I then updated the Launch Template with the new AMI and the `EC2CodeDeployInstanceProfile` IAM role, and updated the ASG to use the new Launch Template version.
-
-![ASG updated to new launch template](images/lab6/lab6-04-asg-updated-lt.png)
-
-*Auto Scaling Group updated to use the new Launch Template version with the CodeDeploy agent baked in*
+*GitHub repository showing `appspec.yml` at the root and the `scripts/` folder after the corrected push*
 
 ---
 
 ### Creating the IAM Roles
 
-CodeDeploy needs two IAM roles to operate. The first gives CodeDeploy itself permission to interact with EC2 instances and read from S3. The second gives the EC2 instances permission to pull deployment bundles from S3 and communicate with CodeDeploy.
+CodeDeploy needs two separate IAM roles. The first, `CodeDeployServiceRole`, gives the CodeDeploy service itself permission to interact with EC2 instances, read from S3, and communicate with the ASG. The second, `EC2CodeDeployInstanceProfile`, gives the EC2 instances permission to download deployment bundles from S3 and receive instructions from CodeDeploy.
 
-![CodeDeploy service role created](images/lab6/lab6-05-codedeployservicerole.png)
+![CodeDeployServiceRole created](images/lab6/lab6-02-codedeployservicerole.png)
 
 *`CodeDeployServiceRole` created in IAM with the `AWSCodeDeployRole` policy attached*
 
-![EC2 instance profile created](images/lab6/lab6-06-ec2instanceprofile.png)
+![EC2CodeDeployInstanceProfile created](images/lab6/lab6-03-ec2instanceprofile.png)
 
 *`EC2CodeDeployInstanceProfile` created with `AmazonS3ReadOnlyAccess` and `AmazonSSMManagedInstanceCore` policies*
 
-![Launch template with IAM profile](images/lab6/lab6-07-lt-v3-with-iam.png)
+---
 
-*Launch Template updated to include the `EC2CodeDeployInstanceProfile` so every new ASG instance gets the role automatically*
+### Installing the CodeDeploy Agent and Building a Clean AMI
+
+The CodeDeploy agent is a small process that runs on each EC2 instance and listens for deployment instructions from the service. Without it, CodeDeploy has no way to reach the instance.
+
+I SSHed into the running ASG instance through the proxy server and installed the agent. After confirming it was active and running, I needed to decide what AMI to build from. This is where the first attempt taught an important lesson. In that attempt, the venv was inside `file-upload-flask`, which was later deleted from the AMI to give CodeDeploy a clean deployment target. The problem was that the venv was moved using `mv` rather than rebuilt, and moving a Python venv breaks the internal shebang lines. Every script inside the venv still pointed to the old path `/home/ec2-user/file-upload-flask/venv/bin/python3`, which no longer existed. Flask would fail to start on every deployment with:
+
+```bash 
+nohup: failed to run command '/home/ec2-user/venv/bin/flask': No such file or directory 
+```
+
+And even before that, running the flask executable directly would return:
+
+```bash
+-bash: /home/ec2-user/venv/bin/flask: cannot execute: required file not found
+```
+
+Checking the shebang confirmed everything:
+
+```bash
+head -1 /home/ec2-user/venv/bin/flask
+#!/home/ec2-user/file-upload-flask/venv/bin/python3
+```
+
+The Python interpreter it expected was gone. The fix was not to move the venv. It was to rebuild it from scratch at the correct location. I launched a fresh standalone instance from the original Lab 5 AMI where `file-upload-flask` still existed, deleted the old broken venv, and created a new one at `/home/ec2-user/venv`:
+
+```bash
+rm -rf /home/ec2-user/venv
+python3 -m venv /home/ec2-user/venv
+source /home/ec2-user/venv/bin/activate
+pip install -r /home/ec2-user/file-upload-flask/requirements.txt
+deactivate
+```
+
+This time the shebang pointed correctly to `/home/ec2-user/venv/bin/python3`. I then installed the CodeDeploy agent on this instance, updated `start-flask.sh` to handle the case where `file-upload-flask` does not yet exist on first boot, removed the `file-upload-flask` directory so CodeDeploy would have a clean target, and took AMI v4 from that clean state.
+
+![CodeDeploy agent active and running](images/lab6/lab6-04-agent-running.png)
+
+*Terminal showing the CodeDeploy agent with `active (running)` status after installation*
+
+![AMI v4 available](images/lab6/lab6-05-ami-v4-available.png)
+
+*AMI showing Available status after the CodeDeploy agent was installed and the venv was correctly rebuilt*
+
+After the AMI was available, I updated the Launch Template with the new AMI and attached the `EC2CodeDeployInstanceProfile`. The ASG was updated to use the new Launch Template version and the old temporary instance was terminated.
+
+![Launch Template updated to new version](images/lab6/lab6-06-lt-updated.png)
+
+*Launch Template updated with the new AMI and IAM instance profile, set as the default version*
 
 ---
 
-### Setting Up CodeDeploy and CodePipeline
+### Setting Up CodeDeploy
 
-With the IAM roles in place, I created the CodeDeploy Application and Deployment Group, then built the CodePipeline.
+With the IAM roles and the clean AMI in place, I created the CodeDeploy Application and Deployment Group. The deployment group targeted `flask-app-asg` directly and was configured for In-place deployments using `CodeDeployDefault.AllAtOnce`. The load balancer integration was enabled, pointing to `flask-app-target-group`, so CodeDeploy would block and restore ALB traffic correctly around each deployment.
 
-![Deployment group created](images/lab6/lab6-08-deploymentgroup-created.png)
+![Deployment group created](images/lab6/lab6-07-deploymentgroup.png)
 
-*`flask-app-deployment-group` created targeting `flask-app-asg` with `CodeDeployDefault.AllAtOnce`*
+*`flask-app-deployment-group` created targeting `flask-app-asg` with `CodeDeployDefault.AllAtOnce` and ALB integration*
 
-The CodePipeline setup used the new GitHub App connection method instead of the older OAuth method. 
+---
 
-![Pipeline source stage](images/lab6/lab6-09-pipeline-sourcestage.png)
+### The NAT Gateway Problem
+
+Before creating the pipeline, the NAT Gateway needed to come back. This was the central problem that ended the first attempt. The CodeDeploy agent continuously polls `codedeploy-commands.ap-southeast-1.amazonaws.com:443`. That is a public endpoint. After Lab 5 cleanup, the NAT Gateway was deleted, leaving the private subnet with no outbound internet route. Without it, the agent times out trying to connect and every pipeline run fails at `BeforeBlockTraffic` with a network error.
+
+I recreated the NAT Gateway in the public subnet, allocated a new Elastic IP, and added the `0.0.0.0/0` route back to the private route table. After confirming the agent could reach the CodeDeploy endpoint, I restarted the agent to clear any backoff state from its earlier failed attempts.
+
+![NAT Gateway active and route confirmed](images/lab6/lab6-08-natgateway-active.png)
+
+*NAT Gateway showing Available status with the private route table updated to route outbound traffic through it*
+
+---
+
+### Creating the CodePipeline
+
+The pipeline setup used GitHub App connection rather than the older OAuth method, which provides more fine-grained repository access. One unexpected issue appeared during pipeline creation: AWS threw a duplicate policy error claiming `AWSCodePipelineServiceRole-ap-southeast-1-flask-app-pipeline` already existed. Searching for it in IAM under both Roles and Policies returned nothing. This was a ghost state left over from a partial pipeline creation in the first attempt. The fix was straightforward: use a custom service role name instead of letting AWS auto-generate one, which bypassed the conflict entirely.
+
+The pipeline was configured with GitHub as the source stage pointing to the `main` branch, no build stage since Python needs no compilation, and AWS CodeDeploy as the deploy stage pointing to `flask-photo-app` and `flask-app-deployment-group`.
+
+![Pipeline source stage configured](images/lab6/lab6-09-pipeline-source.png)
 
 *CodePipeline source stage configured with GitHub via GitHub App connection, pointing to the `main` branch*
 
 ---
 
-### The First Pipeline Run and the NAT Gateway Problem
+### The First Pipeline Run
 
-The pipeline ran for the first time immediately after creation. The Source stage passed. Then the Deploy stage failed with a `HEALTH_CONSTRAINTS` error and a `BeforeBlockTraffic` lifecycle event showing `UnknownError`.
+The pipeline ran immediately after creation. The Source stage passed. The Deploy stage started and the lifecycle events began ticking through.
 
 ![First pipeline run in progress](images/lab6/lab6-10-pipeline-firstrun.png)
 
-*First pipeline execution in progress after the pipeline was created*
+*First pipeline execution running after the pipeline was created*
 
-The error message from the CodeDeploy agent logs said everything clearly:
+All lifecycle events passed. `BeforeBlockTraffic`, `BlockTraffic`, `AfterBlockTraffic`, `ApplicationStop`, `DownloadBundle`, `BeforeInstall`, `Install`, `AfterInstall`, `ApplicationStart`, `ValidateService`, `BeforeAllowTraffic` all turned green. The pipeline completed successfully.
 
-```
-Network error: Failed to open TCP connection to codedeploy-commands.ap-southeast-1.amazonaws.com:443 (execution expired)
-```
+![CodeDeploy lifecycle events all green](images/lab6/lab6-11-codedeploy-success.png)
 
-The CodeDeploy agent was running on the instance. The IAM role was attached. The instance was healthy in the target group. But the agent could not reach the CodeDeploy service because the instance lives in a private subnet with no route to the internet.
-
-The `ip route show` output confirmed it. The only routes on the instance were internal `10.0.2.x` addresses. There was no `0.0.0.0/0` route to the outside world because I had deleted the NAT Gateway after Lab 5 to save costs.
-
-This became the central problem of Lab 6. The CodeDeploy agent needs outbound HTTPS access on port 443 to poll the CodeDeploy service for deployment instructions. Without a NAT Gateway or a working VPC endpoint, that connection is impossible from a private subnet.
-
-I attempted to solve this with VPC Interface Endpoints for the CodeDeploy service, which would have been the cleaner and cheaper solution. The endpoints were created and showed as Available in the console, but the instance still could not reach the CodeDeploy endpoint. The `curl` test confirmed it was still trying to reach a public IP rather than routing through the endpoint. The security group and subnet association issues made the VPC endpoint approach too time-consuming to debug reliably.
-
-The solution that worked was bringing the NAT Gateway back.
-
----
-
-### The ASG Replacement Problem
-
-While debugging the connectivity issue, I ran into a second problem that compounded everything. The ASG kept terminating and replacing instances. Every time an instance was terminated, whether by the ASG health check or by me manually, the replacement came from the old AMI without the CodeDeploy agent installed. This created a cycle where I would install the agent, the ASG would replace the instance, and the new instance would have no agent.
-
-The correct fix was to bake the agent into an AMI and update the Launch Template so that every new ASG instance starts with the agent already installed. I did this multiple times across several AMI versions as the situation evolved.
-
-![AMI v4 available](images/lab6/lab6-15-ami-v4-available.png)
-
-*One of several AMI versions created during the troubleshooting process, each capturing a progressively cleaner server state*
-
-Each AMI cycle required updating the Launch Template to a new version and updating the ASG to use that version, then terminating the current instance to force the ASG to launch a fresh one from the new AMI. This process was repeated more times than I would like to admit.
-
----
-
-### The File Conflict
-
-Once the NAT Gateway was back and the agent could reach the CodeDeploy service, the pipeline ran and the lifecycle events started passing. `BeforeBlockTraffic` succeeded. `BlockTraffic` succeeded. `AfterBlockTraffic` succeeded. `ApplicationStop` succeeded. But then `Install` failed with a new error:
-
-```
-The deployment failed because a specified file already exists at this location: /home/ec2-user/file-upload-flask/.gitignore
-```
-
-The `file-upload-flask` folder already existed on the instance because it was cloned there during the original Lab 5 setup and baked into the AMI. CodeDeploy was trying to copy new files into that directory, but the existing files were in the way, even though `appspec.yml` specified `overwrite: true`.
-
-The immediate fix was to SSH into the instance and manually remove the folder before retrying the pipeline. That worked, and the pipeline succeeded.
-
-![CodeDeploy lifecycle events all succeeded](images/lab6/lab6-11-codedeploy-success.png)
-
-*CodeDeploy deployment showing all lifecycle events succeeded after the file conflict was resolved*
+*CodeDeploy deployment showing all lifecycle events succeeded*
 
 ![Pipeline succeeded](images/lab6/lab6-12-pipeline-succeeded.png)
 
-*CodePipeline showing both Source and Deploy stages green after the successful deployment*
-
-![App working after deployment](images/lab6/lab6-13-app-working-postdeploy.png)
-
-*App accessible via the ALB after the successful CodeDeploy deployment*
-
-The permanent fix was to add `rm -rf /home/ec2-user/file-upload-flask` to `stop_flask.sh` so CodeDeploy would always clean up the old folder before copying new files. This was committed and pushed, and required yet another AMI cycle to bake the fix into the instance image so future instances would not have the same problem.
+*CodePipeline showing both Source and Deploy stages green after the first successful deployment*
 
 ---
 
-### Testing the CI/CD Pipeline
+### Flask Not Starting After Deployment
 
-With the pipeline working, I tested the full CI/CD cycle by modifying `main.py` to change the hello world message and pushing the change to GitHub.
+Despite all lifecycle events passing, `curl http://localhost:5000/` on the instance still returned connection refused. The `file-upload-flask` directory had been deployed correctly, but Flask was not running. Checking `flask.log` showed the problem:
 
-![Pipeline triggered by code push](images/lab6/lab6-14-pipeline-triggered.png)
+```bash
+nohup: failed to run command '/home/ec2-user/venv/bin/flask': No such file or directory 
+```
 
-*Pipeline execution triggered after pushing the hello world code change to GitHub*
+This was confusing because the venv had been rebuilt correctly and the flask executable was confirmed present at that path. Running it directly revealed the real issue:
 
-The pipeline triggered and both stages completed successfully. However, the updated message did not appear on the browser. Investigation showed the `main.py` on the server still had the original content dated April 26, which was the date of the original file baked into the AMI. The deployment had succeeded but the old file from the AMI was taking precedence over the newly deployed one.
+```bash
+/home/ec2-user/venv/bin/flask --version
+-bash: /home/ec2-user/venv/bin/flask: cannot execute: required file not found
+```
 
-This pointed to the same root cause as the `.gitignore` conflict: the `file-upload-flask` folder baked into the AMI was interfering with the deployment. The `rm -rf` fix in `stop_flask.sh` was supposed to resolve this, but the AMI that the current instance was launched from predated that fix.
+The file existed but could not execute. The shebang at the top of the flask executable still pointed to the old broken path from a previous AMI iteration. This particular instance had been running before the AMI v4 rebuild and had inherited the broken venv.
 
-Another AMI cycle was needed. But at this point, Finals week was approaching, the AWS bill was growing with each NAT Gateway creation, and May 9 was one day away. I made the decision to stop.
+The permanent fix was to update `start_server.sh` in the GitHub repository to call flask using its full absolute path:
+
+```bash
+nohup /home/ec2-user/venv/bin/flask --app main run --host 0.0.0.0 >> /home/ec2-user/flask.log 2>&1 &
+```
+
+This change was committed and pushed. The pipeline triggered automatically from the push, deployed the updated script, and Flask started correctly on the next deployment.
+
+![App working via ALB after successful deployment](images/lab6/lab6-13-app-working-postdeploy.png)
+
+*App returning the expected response via the ALB DNS after the pipeline deployed successfully and Flask started*
 
 ---
 
-### The Decision to Stop and Clean Up
+### The Full CI/CD Test
 
-The combination of factors that led to stopping was straightforward. Finals week is near. The deadline was May 9. And each new attempt required another AMI cycle that could take 10 to 15 minutes just for the AMI to become available, before any actual debugging could happen.
+With Flask confirmed running and the ALB showing the instance as healthy, the final test was the whole point of Lab 6. I opened `main.py` in VS Code, found the root route, and changed the return message:
 
-Stopping was not giving up. It was the correct resource allocation decision given the constraints.
+```python
+return "<p>Hello from Jayvee Dela Rosa - AWS Network Challenge 2 Lab 6 CI/CD!</p>"
+```
 
-I deleted every Lab 6 resource: the CodePipeline, the CodeDeploy application, both IAM roles, all AMI versions created during Lab 6, all extra Launch Template versions, the NAT Gateway, the S3 bucket created by CodePipeline, and the GitHub repository. The ASG was restored to use the original Launch Template Version 1 with the original AMI. A new instance launched from that AMI, passed health checks, and the app returned to its Lab 5 state.
+Then from the VS Code terminal:
+
+```bash
+git add main.py
+git commit -m "Lab 6 final test: CI/CD pipeline verification"
+git push origin main
+```
+
+Within 60 seconds of the push, the pipeline started a new execution.
+
+![Pipeline triggered automatically by GitHub push](images/lab6/lab6-14-pipeline-triggered.png)
+
+*New pipeline execution starting within seconds of the GitHub push*
+
+Both stages turned green. I opened the browser and visited the ALB DNS name.
+
+![Browser showing the new message live](images/lab6/lab6-15-newcode-live.png)
+
+*Browser showing "Hello from Jayvee Dela Rosa - AWS Network Challenge 2 Lab 6 CI/CD!" served through the ALB*
+
+The message was live. No SSH. No manual restart. No touching the server. One push and the pipeline handled everything.
+
+I also confirmed the upload and images routes were still working correctly after the deployment, to make sure the CI/CD flow had not broken anything that was already working.
+
+![Upload file route still working](images/lab6/lab6-16-upload-file-still-working.png)
+
+*Upload form accessible and functional through the ALB after the deployment*
+
+![Images route still working](images/lab6/lab6-17-images-still-working.png)
+
+*Images page loading correctly through the ALB after the deployment*
 
 ---
 
 ## 🔹 Final Verification
 
-After cleanup, the infrastructure was confirmed back in its Lab 5 state. The ASG instance was running and healthy, the IAM role field was empty confirming the `EC2CodeDeployInstanceProfile` was removed, and the ALB was serving traffic correctly.
-
-The app returned the original response, confirming the Lab 5 state was fully restored and no Lab 6 changes remained on the server.
+All verification steps passed. The pipeline triggered from a GitHub push, CodeDeploy deployed the updated code to the ASG instance, Flask restarted correctly using the newly deployed script, and the browser confirmed the updated message was live via the ALB. The upload and images routes continued working throughout the deployment cycle without any interruption.
 
 ---
 
@@ -306,35 +350,40 @@ The app returned the original response, confirming the Lab 5 state was fully res
 
 | Error | Cause | Fix |
 |---|---|---|
-| `BeforeBlockTraffic` fails with `UnknownError` on every pipeline run | CodeDeploy agent cannot reach `codedeploy-commands.ap-southeast-1.amazonaws.com:443` because the private subnet has no internet route after NAT Gateway deletion | Recreated the NAT Gateway and added `0.0.0.0/0` route back to the private route table |
-| ASG keeps launching new instances without the CodeDeploy agent | Every new instance launches from the original AMI which has no agent installed | Installed the CodeDeploy agent, created a new AMI, updated the Launch Template, and updated the ASG to use the new version |
-| `Install` lifecycle event fails with file already exists at `.gitignore` location | The `file-upload-flask` folder already exists on the instance from Lab 5 setup baked into the AMI, and `overwrite: true` does not handle pre-existing files that are not in the deployment bundle | Manually removed the folder via SSH before retrying, then added `rm -rf /home/ec2-user/file-upload-flask` to `stop_flask.sh` as a permanent fix |
-| Pipeline succeeds but old `main.py` content remains on the server | The instance was launched from an AMI that predated the `rm -rf` fix in `stop_flask.sh`, so the old folder from the AMI was still present when deployment ran | Required another AMI cycle to bake the fix in, which was not completed before the lab was stopped |
-| VPC Interface Endpoints for CodeDeploy created but agent still cannot reach the service | Endpoint was available in the console but instance was still routing to a public IP, likely due to security group or subnet association misconfiguration | Abandoned VPC endpoint approach and used NAT Gateway instead |
+| `appspec.yml` pushed empty to GitHub | File was not saved in VS Code before running `git add` | Caught early by viewing the file on GitHub, saved and re-pushed correctly |
+| `BeforeBlockTraffic` fails with network error on every pipeline run | CodeDeploy agent cannot reach `codedeploy-commands.ap-southeast-1.amazonaws.com:443` because the private subnet has no outbound internet route after Lab 5 NAT Gateway deletion | Recreated the NAT Gateway and added `0.0.0.0/0` route back to the private route table |
+| Duplicate IAM policy error when creating CodePipeline | Ghost state from a partial pipeline creation in the first attempt left a policy name reserved in AWS even though it was invisible in IAM | Used a custom service role name instead of the auto-generated one, bypassing the conflict |
+| `nohup: failed to run command '/home/ec2-user/venv/bin/flask': No such file or directory` | The venv was moved using `mv` instead of rebuilt, breaking all internal shebang paths inside the venv scripts to point to the old location | Launched from the original Lab 5 AMI, deleted the broken venv, rebuilt it at `/home/ec2-user/venv` using `python3 -m venv`, installed all dependencies, and took a fresh AMI from that clean state |
+| Flask not starting after deployment even with correct venv | The running instance predated the venv rebuild and still had the broken shebang, causing `nohup flask` to fail even after all CodeDeploy lifecycle events passed | Updated `start_server.sh` in the repository to call flask via its full absolute path `/home/ec2-user/venv/bin/flask`, pushed the fix, and the pipeline redeployed it automatically |
+| ASG instances looping through terminating and relaunching | `start-flask.sh` on new instances exited with an error when `file-upload-flask` did not exist yet before the first CodeDeploy deployment | Added a directory check to `start-flask.sh` so it exits cleanly when `file-upload-flask` is absent, allowing the instance to survive the health check grace period until CodeDeploy deploys |
 
 ---
 
 ## 🔹 Key Learnings
 
-**1. Private subnets need a deliberate outbound strategy for every AWS service they talk to.**
+**1. Moving a Python venv breaks it. Always rebuild it.**
 
-The CodeDeploy agent needs to reach `codedeploy-commands.ap-southeast-1.amazonaws.com` on port 443. That is a public endpoint. An instance in a private subnet has no path to it without either a NAT Gateway or a properly configured VPC Interface Endpoint. This is not a Lab 6 problem specifically. It is a fundamental constraint of private subnet architecture that applies to any AWS service an instance needs to call. Before deploying any agent or service to a private subnet instance, the outbound network path needs to be planned explicitly.
+A Python virtual environment contains executable scripts with hardcoded shebang lines pointing to the Python interpreter that was used to create it at its original path. When you move the venv directory using `mv`, the shebangs still point to the old path. Every script inside the venv, including the `flask` command, becomes unable to execute. The only correct approach is to create a fresh venv at the intended permanent location, then install dependencies into it there. This is a non-obvious failure that produces a cryptic error message and is easy to miss if you do not know to look at the shebang line first.
 
-**2. AMIs capture everything, including the problems.**
+**2. `nohup` does not inherit a shell's activated environment.**
 
-The `file-upload-flask` folder being present on every new instance was not a CodeDeploy bug. It was an AMI problem. The folder was cloned during Lab 5 setup and baked into the AMI before anyone thought about what CodeDeploy would do when it tried to deploy files to that same location. Every new instance launched from that AMI inherited the problem. The lesson is that what gets baked into an AMI matters as much as what gets deployed later. A clean AMI baseline, one where CodeDeploy-managed directories do not already exist, would have prevented the entire file conflict issue from the start.
+Activating a venv with `source venv/bin/activate` sets up your current shell session. But `nohup` spawns a new process that does not inherit that environment. Writing `nohup flask` after activating the venv works in an interactive terminal but fails silently when run from a CodeDeploy lifecycle script. The reliable solution is to use the full absolute path to the executable: `/home/ec2-user/venv/bin/flask`. This works regardless of whether any venv is activated and regardless of the calling context.
 
-**3. CI/CD infrastructure has its own deployment problem.**
+**3. The AMI is the source of truth for every new instance. Bad state in the AMI compounds forever.**
 
-Deploying a CI/CD pipeline requires deploying the CI/CD agent first. That agent needs network access. The agent needs to be baked into the AMI. The AMI needs to be registered in the Launch Template. The Launch Template needs to be set as the ASG default. A new instance needs to launch from it. Only then can the pipeline run. Each of these steps has a dependency on the previous one, and any failure at any step resets the cycle. Understanding the full dependency chain before starting would have saved significant time.
+Every problem in Lab 6 that took more than one attempt to fix came down to AMI state. A broken venv baked into the AMI means every new instance launched by the ASG inherits that broken venv. A missing CodeDeploy agent in the AMI means every new instance has no way to receive deployments. The AMI determines what every new instance starts with, and the ASG can launch new instances at any time. Getting the AMI right is not a one-time task. It is the central discipline of any ASG-based architecture.
 
-**4. Cost accumulates silently when troubleshooting infrastructure.**
+**4. Private subnets need an explicit outbound path for every AWS service they talk to.**
 
-The NAT Gateway cost per hour. The ALB cost per hour. RDS cost per hour. During a multi-day troubleshooting session, these costs compound in the background regardless of whether any progress is being made. Creating and deleting the NAT Gateway multiple times added data processing charges on top of the hourly rate. For a personal project with a hard budget constraint, having a clear plan before creating infrastructure, and a habit of deleting temporary resources immediately after use, is not optional. It is the difference between a $8 month and a $93 forecasted month.
+The CodeDeploy agent polls a public endpoint on port 443. An instance in a private subnet has no path to that endpoint without a NAT Gateway or a properly configured VPC Interface Endpoint. This is not specific to CodeDeploy. Any AWS service that an instance needs to call from a private subnet requires deliberate network planning. Deleting the NAT Gateway after Lab 5 to save costs was the right call at the time, but it meant Lab 6 had to start by restoring outbound connectivity before any pipeline work could happen.
 
-**5. Knowing when to stop is part of engineering judgment.**
+**5. CI/CD infrastructure has its own bootstrap problem.**
 
-There is always one more thing to try. One more AMI cycle. One more pipeline run. One more tweak to `stop_flask.sh`. But engineering judgment includes recognizing when the cost of continuing exceeds the value of the result, especially under real constraints like a deadline, a budget, and competing priorities. Stopping, documenting what happened, cleaning up properly, and preserving the Lab 5 state was the right decision. The infrastructure is intact. The learnings are real. The documentation is honest. That is worth more than a green checkmark reached by exhausting every resource available.
+You need the CodeDeploy agent installed and running before CodeDeploy can deploy anything. The agent needs to be baked into the AMI before the ASG can launch instances that are ready to receive deployments. The AMI needs to be in the Launch Template before the ASG uses it. The pipeline cannot deploy until the agent is reachable. Every step in the chain depends on the previous one, and a failure at any step resets the entire cycle. Completing the bootstrap correctly in the right order was more than half the work of this lab.
+
+**6. A push to GitHub should feel boring when CI/CD is working correctly.**
+
+The moment that confirmed Lab 6 was truly complete was not the green checkmark on the pipeline. It was visiting the ALB URL in the browser and seeing the new message without having done anything on the server. No SSH session. No `git pull`. No Flask restart. Just a commit, a push, and a URL refresh. That combination, code change to live deployment with no manual steps, is what all six labs were building toward. When it is working correctly, it should feel almost too easy.
 
 ---
 
@@ -342,29 +391,21 @@ There is always one more thing to try. One more AMI cycle. One more pipeline run
 
 | Action | Reason |
 |---|---|
-| Deleted CodePipeline `flask-app-pipeline` | Lab 6 resource, no longer needed after stopping |
-| Deleted CodeDeploy Application `flask-photo-app` including deployment group | Lab 6 resource, no longer needed after stopping |
-| Deleted IAM Role `CodeDeployServiceRole` | Lab 6 resource, no longer needed |
-| Deleted IAM Role `EC2CodeDeployInstanceProfile` | Lab 6 resource, no longer needed |
-| Deregistered and deleted all Lab 6 AMI versions | Lab 6 resources, no longer needed. Original Lab 5 AMI kept intact |
-| Deleted Lab 6 Launch Template versions, set default back to Version 1 | Restored Launch Template to Lab 5 state |
-| Updated ASG to use Launch Template Version 1 | Restored ASG to Lab 5 state |
-| Deleted NAT Gateway, removed route from private route table, released Elastic IP | NAT Gateway was temporary. Removed to stop hourly charges |
-| Deleted S3 bucket created by CodePipeline | Lab 6 artifact storage bucket, no longer needed |
-| Deleted all three GitHub App connections | Created during CodePipeline setup, no longer needed |
-| Deleted GitHub repository `jayveedelarosa/file-upload-flask` | No longer needed after stopping Lab 6 |
-| Deleted local `file-upload-flask` folder on Windows machine | Cleanup of local development files |
-| Terminated current ASG instance to force fresh launch from original AMI | Ensured the running instance reflects the restored Lab 5 state |
+| Deleted NAT Gateway, removed route from private route table, released Elastic IP | NAT Gateway charges per hour. Removed immediately after pipeline verification to stop costs accumulating |
+| Stopped DocumentDB cluster | Reduces hourly charges while not actively developing |
+| Stopped proxy server instance | No active SSH sessions needed after lab completion |
 
 ---
 
 ## 🔹 What's Next
 
-Lab 6 remains unfinished, and that is an honest outcome worth stating clearly. The CI/CD pipeline ran and deployed successfully at least once. The architecture is understood. The failure points are documented. If and when time and resources allow, the correct approach would be to start with a clean AMI that has no `file-upload-flask` folder present, install the CodeDeploy agent, bake it in, and build the pipeline from that clean baseline. The NAT Gateway would need to stay active for the duration of any pipeline testing, then be removed and replaced with a properly configured VPC Interface Endpoint for a permanent solution.
-
-For now, the project stands at five completed labs covering everything from a single LightSail server to a fully auto-scaling cloud infrastructure. That is the foundation Sir Raphael's challenge was asking for, and it is a foundation I understand well enough to explain clearly.
+Lab 6 completes the challenge Sir Raphael set on April 21. The infrastructure now covers everything from a single LightSail server in Lab 1 to a fully automated, auto-scaling, CI/CD-enabled deployment in Lab 6. A code change pushed from a laptop deploys itself to every running instance in the ASG without any manual intervention. That is the foundation the challenge was asking for.
 
 ---
 
 *Documentation by Jayvee Dela Rosa | Based on the AWS Network Challenge 2 by [Raphael Jambalos](https://dev.to/raphael_jambalos/aws-network-challenge-2-deploy-a-file-uploading-app-on-ec2-rds-documentdb-16eb)*
+
+
+
+
 
