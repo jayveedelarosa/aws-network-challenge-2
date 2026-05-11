@@ -4,7 +4,7 @@
 ![Flask](https://img.shields.io/badge/Backend-Flask-blue)
 ![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)
 ![MongoDB](https://img.shields.io/badge/Database-MongoDB-green)
-![Status](https://img.shields.io/badge/Status-In%20Progress-yellow)
+![Status](https://img.shields.io/badge/Status-Complete-brightgreen)
 
 ---
 
@@ -18,7 +18,7 @@ Metro Manila, an event typically attended by industry professionals. Despite
 being a 1st year student, I chose to participate.
 
 During the event, I met sir **Raphael Jambalos** (AWS Community Hero, Head
-of Tech at eCloudValley Philippines, and the speaker of the workshop). I
+of Tech at eCloudValley Philippines), and the speaker of the workshop. I
 expressed my desire to join his **Elevate Innovations Training Program**, but
 the program prioritizes graduating students and fresh graduates.
 
@@ -26,7 +26,7 @@ Because I insisted on wanting to join, **Sir Raphael challenged me** to:
 
 - ✅ Build a full AWS project
 - ✅ Document it professionally on GitHub
-- ✅ Be able to explain it clearly — by **May 9, 2026**
+- ✅ Be able to explain it clearly 
 
 This repository is my response to that challenge.
 
@@ -77,7 +77,7 @@ When a user uploads an image:
 | File Storage | Local → Amazon EFS |
 | Web Server | Nginx → AWS Application Load Balancer |
 | Scaling | Amazon Auto Scaling Groups |
-| CI/CD | AWS CodePipeline + AWS CodeDeploy (attempted) |
+| CI/CD | AWS CodePipeline + AWS CodeDeploy |
 | Cloud Provider | Amazon Web Services (AWS) |
 | Region | ap-southeast-1 (Singapore) |
 | OS | Amazon Linux 2 (Lab 1), Amazon Linux 2023 (Lab 2+) |
@@ -88,7 +88,7 @@ When a user uploads an image:
 
 This project is structured as a series of labs, each building on the
 previous one. The architecture evolves from a single fragile server to a
-fully managed, auto-scaling cloud infrastructure.
+fully managed, auto-scaling, CI/CD-enabled cloud infrastructure.
 
 | Lab | Status | Description |
 |---|---|---|
@@ -97,11 +97,11 @@ fully managed, auto-scaling cloud infrastructure.
 | Lab 3 | ✅ Complete | Replace manual databases with Amazon RDS and Amazon DocumentDB, replace Nginx with Application Load Balancer |
 | Lab 4 | ✅ Complete | Remove state from app servers using Amazon EFS for shared file storage |
 | Lab 5 | ✅ Complete | Auto Scaling Groups for automatic EC2 scaling based on CPU utilization |
-| Lab 6 | ⚠️ Attempted | CI/CD pipeline with AWS CodePipeline and CodeDeploy — pipeline ran successfully but full end-to-end verification was not completed before the May 9 deadline |
+| Lab 6 | ✅ Complete | CI/CD pipeline with AWS CodePipeline and CodeDeploy — push to GitHub automatically deploys to all ASG instances |
 
 ---
 
-## ⚙️ AWS Services Used (So Far)
+## ⚙️ AWS Services Used
 
 - **Amazon LightSail** — Lab 1 simple deployment across single and
   multi-server configurations
@@ -114,8 +114,8 @@ fully managed, auto-scaling cloud infrastructure.
 
 - **AWS Security Groups** — Per-server firewall rules
 
-- **NAT Gateway** — Temporary internet access for private subnet servers
-  during setup
+- **NAT Gateway** — Outbound internet access for private subnet instances,
+  required permanently in Lab 6 for the CodeDeploy agent to reach AWS endpoints
 
 - **AWS Service Quotas** — Instance limit management for multi-server
   LightSail deployments
@@ -153,15 +153,18 @@ fully managed, auto-scaling cloud infrastructure.
 - **Amazon CloudWatch Alarms** — Monitor average CPU utilization across ASG
   instances and trigger scale-out and scale-in events at the 70% threshold
 
-- **AWS CodeDeploy** — Deployment service that coordinates code deployment
-  to EC2 instances via the CodeDeploy agent (attempted in Lab 6)
+- **AWS CodeDeploy** — Deployment service that runs lifecycle scripts on EC2
+  instances to stop the old application, copy new code, and restart Flask
+  automatically on every pipeline execution
 
-- **AWS CodePipeline** — CI/CD orchestration service that watches GitHub for
-  pushes and triggers CodeDeploy deployments automatically (attempted in Lab 6)
+- **AWS CodePipeline** — CI/CD orchestration service that watches the GitHub
+  repository for pushes and triggers CodeDeploy deployments automatically
+  without any manual intervention
 
-- **AWS IAM Roles** — `CodeDeployServiceRole` and `EC2CodeDeployInstanceProfile`
-  created to give CodeDeploy and EC2 the permissions needed to communicate
-  (created and deleted in Lab 6)
+- **AWS IAM Roles** — `CodeDeployServiceRole` giving CodeDeploy permission
+  to interact with EC2 and S3, and `EC2CodeDeployInstanceProfile` giving
+  instances permission to download deployment bundles and communicate with
+  the CodeDeploy service
 
 ---
 
